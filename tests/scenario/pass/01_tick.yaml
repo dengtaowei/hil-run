@@ -1,0 +1,39 @@
+name: tick
+steps:
+  - id: start
+    device: ap
+    write: start_tick
+    expect:
+      - pattern: '^rtc0 start_tick$'
+      - absent: "failed"
+  - id: tick-1
+    device: ap
+    write: get_tick
+    expect:
+      - pattern: '^rtc0 tick (\d+)$'
+        save: n1
+        save_ms: t1
+  - id: wait
+    device: ap
+    sleep_ms: 300
+    expect:
+      - absent: "failed"
+  - id: tick-2
+    device: ap
+    write: get_tick
+    expect:
+      - pattern: '^rtc0 tick (\d+)$'
+        gt: n1
+        rate_hz: {tick: n1, time: t1, clock: rtc}
+  - id: tick-abs
+    device: ap
+    write: get_tick
+    expect:
+      - pattern: '^rtc0 tick (\d+)$'
+        rate_hz: {tick: n1, time: t1, min: 20000, max: 45000}
+  - id: set
+    device: ap
+    write: set_tick ${n1}
+    expect:
+      - pattern: '^rtc0 set_tick (\d+)$'
+        eq: n1

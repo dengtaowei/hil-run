@@ -1,0 +1,25 @@
+name: stop
+steps:
+  - id: stop
+    device: ap
+    write: stop_tick
+    expect:
+      - pattern: '^rtc0 stop_tick$'
+  - id: hold-1
+    device: ap
+    write: get_tick
+    expect:
+      - pattern: '^rtc0 tick (\d+)$'
+        save: held
+  - id: hold-2
+    device: ap
+    write: get_tick
+    expect:
+      - pattern: '^rtc0 tick (\d+)$'
+        eq: held
+cleanup:
+  - id: restart
+    device: ap
+    write: start_tick
+    expect:
+      - pattern: '^rtc0 start_tick$'

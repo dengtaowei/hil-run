@@ -1,0 +1,19 @@
+name: fail
+steps:
+  - id: wrong-count
+    device: ap
+    write: version
+    expect:
+      - pattern: '^version 0x3230382a$'
+        count: 2
+  - id: never
+    device: ap
+    write: version
+    expect:
+      - pattern: 'version'
+cleanup:
+  - id: after
+    device: ap
+    write: version
+    expect:
+      - pattern: '^version'

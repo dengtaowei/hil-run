@@ -1,0 +1,9 @@
+prompt: "boot>"
+timeout_s: 3
+devices:
+  ap: fake_ap
+  hp: fake_hp
+clocks:
+  rtc:
+    hz: 32768
+    tol_pct: 5

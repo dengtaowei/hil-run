@@ -1,0 +1,14 @@
+name: notime
+steps:
+  - id: plain
+    device: ap
+    write: get_tick
+    expect:
+      - pattern: '^rtc0 tick (\d+)$'
+        save: n1
+  - id: timed
+    device: ap
+    write: get_tick
+    expect:
+      - pattern: '^rtc0 tick (\d+)$'
+        save_ms: t1

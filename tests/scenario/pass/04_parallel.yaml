@@ -1,0 +1,20 @@
+name: parallel
+steps:
+  - parallel:
+      - id: ap-version
+        device: ap
+        write: version
+        expect:
+          - pattern: '^version (0x[0-9a-f]+)$'
+            capture_set: ["0x3230382a"]
+      - id: hp-version
+        device: hp
+        write: version
+        expect:
+          - pattern: '^version 0x3230382a$'
+            count: 1
+  - id: ap-equals
+    device: ap
+    write: version
+    expect:
+      - equals: "version\nversion\nversion 0x3230382a"

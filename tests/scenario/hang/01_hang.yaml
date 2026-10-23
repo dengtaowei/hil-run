@@ -1,0 +1,24 @@
+name: hang
+timeout_s: 1
+steps:
+  - id: ok
+    device: hp
+    write: version
+    expect:
+      - pattern: '^version'
+  - id: hang
+    device: ap
+    write: hang
+    expect:
+      - pattern: 'never'
+cleanup:
+  - id: ap-cleanup
+    device: ap
+    write: version
+    expect:
+      - pattern: '^version'
+  - id: hp-cleanup
+    device: hp
+    write: version
+    expect:
+      - pattern: '^version'

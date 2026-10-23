@@ -1,0 +1,24 @@
+name: alarm
+steps:
+  - id: arm
+    device: ap
+    write: set_alarm 1
+    expect:
+      - pattern: '^rtc0 alarm set for 1 seconds$'
+        save_ms: armed
+      - absent: '^RTC interrupt triggered!$'
+  - id: irq
+    device: ap
+    read: true
+    expect:
+      - pattern: '^RTC interrupt triggered!$'
+        count: 1
+        elapsed_ms: {since: armed, ms: 1000, tol_pct: 20}
+      - pattern: '^tick1: \d+, tick2: \d+, Difference: (\d+)$'
+        count: 1
+        range: {clock: rtc}
+  - id: irq-abs
+    device: ap
+    sleep_ms: 50
+    expect:
+      - absent: '^RTC interrupt triggered!$'
