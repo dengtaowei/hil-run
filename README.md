@@ -36,6 +36,20 @@ clocks:           # 可选。名义频率，改频率只改这里
 
 步骤可用的键：`id`、`device`、`write`、`read`、`sleep_ms`、`expect`、`mutating`。几个设备同时执行时写成 `parallel: [步骤, ...]`，同一组里每个设备只能出现一次。`cleanup` 无论前面成败都会执行，已经卡住的设备会被跳过。
 
+同一段步骤要对一组值各跑一遍时写成 `repeat`，跑之前摊开。几个名字按位置对齐（zip）。`${id}` 只替换 `repeat` 里的名字，前面 `save` 的 `${c0}` 不动：
+
+```yaml
+- repeat:
+    id: [1, 2, 3]
+  steps:
+    - id: t${id}-c1
+      device: ap
+      write: chiptest_timer get_count ${id}
+      expect:
+        - pattern: '^timer ${id} count = (\d+)$'
+          save: c${id}
+```
+
 ### expect 条件
 
 每一条必须有且只有一个选择器：`pattern`（正则，多行模式）、`absent`（不得匹配）、`equals`（去掉提示符行后整段相等）。`pattern` 后面可以加下面这些比较器，全部满足才算通过：

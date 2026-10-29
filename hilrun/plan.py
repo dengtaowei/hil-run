@@ -6,7 +6,7 @@ import re
 
 import yaml
 
-from .compare import is_number, tol_band, validate_expect
+from .compare import is_name, is_number, tol_band, validate_expect
 from .errors import PlanError
 
 PLAN_KEYS = ("name", "steps", "cleanup", "timeout_s", "prompt")
@@ -101,6 +101,73 @@ def validate_step(step, devices, where):
         validate_expect(item, where)
 
 
+def subst_repeat(node, binding):
+    """Replace ${name} for names in binding; leave other ${refs} alone."""
+    if isinstance(node, str):
+        def repl(match):
+            key = match.group(1)
+            if key in binding:
+                return str(binding[key])
+            return match.group(0)
+
+        return REF_RE.sub(repl, node)
+    if isinstance(node, list):
+        return [subst_repeat(item, binding) for item in node]
+    if isinstance(node, dict):
+        return {key: subst_repeat(value, binding) for key, value in node.items()}
+    return node
+
+
+def repeat_bindings(spec, where):
+    if not isinstance(spec, dict) or not spec:
+        raise PlanError("%s: repeat needs a name -> list" % where)
+    names = list(spec)
+    lists = []
+    for name in names:
+        if not is_name(name):
+            raise PlanError("%s: repeat name %r is not an identifier" % (where, name))
+        values = spec[name]
+        if not isinstance(values, list) or not values:
+            raise PlanError("%s: repeat %s must be a non-empty list" % (where, name))
+        lists.append(values)
+    length = len(lists[0])
+    if any(len(values) != length for values in lists):
+        raise PlanError("%s: repeat lists must be the same length" % where)
+    for index in range(length):
+        yield {names[i]: lists[i][index] for i in range(len(names))}
+
+
+def expand_repeats(items, where):
+    """Turn repeat groups into a flat step list. Happens before validation.
+
+    Several names zip in lockstep. ${name} in the body is replaced for those
+    names only; ${saved} from earlier steps is left for expand_refs.
+    """
+    if not isinstance(items, list):
+        return items
+    out = []
+    for index, step in enumerate(items):
+        loc = "%s[%d]" % (where, index)
+        if isinstance(step, dict) and "parallel" in step and isinstance(step.get("parallel"), list):
+            child = dict(step)
+            child["parallel"] = expand_repeats(step["parallel"], loc)
+            out.append(child)
+            continue
+        if not (isinstance(step, dict) and "repeat" in step):
+            out.append(step)
+            continue
+        extra = set(step) - {"repeat", "steps"}
+        if extra:
+            raise PlanError("%s: a repeat group has only repeat and steps" % loc)
+        body = step.get("steps")
+        if not isinstance(body, list) or not body:
+            raise PlanError("%s: repeat steps must be a non-empty list" % loc)
+        for binding in repeat_bindings(step["repeat"], loc):
+            expanded = subst_repeat(copy.deepcopy(body), binding)
+            out.extend(expand_repeats(expanded, loc))
+    return out
+
+
 def iter_steps(items, devices, where):
     if not isinstance(items, list):
         raise PlanError("%s: steps must be a list" % where)
@@ -192,6 +259,8 @@ def prepare_plan(plan, bench, default_name="plan"):
     ready.setdefault("name", default_name)
     clocks = bench.get("clocks") or {}
     devices = bench["devices"]
+    ready["steps"] = expand_repeats(ready.get("steps", []), ready["name"])
+    ready["cleanup"] = expand_repeats(ready.get("cleanup", []), "cleanup")
     expand_clock_specs(ready.get("steps", []), clocks, ready["name"])
     expand_clock_specs(ready.get("cleanup", []), clocks, "cleanup")
     ready["steps"] = list(iter_steps(ready.get("steps", []), devices, ready["name"]))

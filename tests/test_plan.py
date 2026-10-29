@@ -3,7 +3,9 @@ import copy
 import pytest
 
 from hilrun.errors import PlanError
-from hilrun.plan import expand_clock_specs, expand_refs, iter_steps, prepare_plan, validate_step
+from hilrun.plan import (
+    expand_clock_specs, expand_refs, expand_repeats, iter_steps, prepare_plan, validate_step,
+)
 
 DEVICES = {"ap": "board_ap", "hp": "board_hp"}
 BENCH = {"devices": DEVICES, "clocks": {"rtc": {"hz": 32768, "tol_pct": 5}}}
@@ -86,6 +88,61 @@ def test_prepare_plan_leaves_input_alone():
     assert plan == before
     assert ready["steps"][0]["expect"][0]["rate_hz"]["hz"] == 32768
     assert ready["cleanup"] == []
+
+
+def test_expand_repeats_one_name():
+    items = [
+        {"repeat": {"id": [1, 2]}, "steps": [
+            {"id": "t${id}", "device": "ap", "write": "get ${id}",
+             "expect": [{"pattern": "timer ${id}", "save": "c${id}"}]},
+        ]},
+        {"device": "ap", "write": "keep ${c0}"},
+    ]
+    out = expand_repeats(items, "p")
+    assert [s["id"] for s in out[:2]] == ["t1", "t2"]
+    assert out[0]["write"] == "get 1"
+    assert out[0]["expect"][0] == {"pattern": "timer 1", "save": "c1"}
+    assert out[2]["write"] == "keep ${c0}"
+
+
+def test_expand_repeats_zips_names():
+    items = [{"repeat": {"id": [1, 2], "mode": [0, 1]}, "steps": [
+        {"device": "ap", "write": "t ${id} ${mode}"},
+    ]}]
+    out = expand_repeats(items, "p")
+    assert [s["write"] for s in out] == ["t 1 0", "t 2 1"]
+
+
+def test_expand_repeats_nested():
+    items = [{"repeat": {"a": [1]}, "steps": [
+        {"repeat": {"b": [2, 3]}, "steps": [{"device": "ap", "write": "${a}${b}"}]},
+    ]}]
+    out = expand_repeats(items, "p")
+    assert [s["write"] for s in out] == ["12", "13"]
+
+
+@pytest.mark.parametrize("group, message", [
+    ({"repeat": {"id": [1]}, "steps": [{"write": "x"}], "id": "x"}, "only repeat and steps"),
+    ({"repeat": {"id": []}, "steps": [{"write": "x"}]}, "non-empty list"),
+    ({"repeat": {"id": [1], "m": [1, 2]}, "steps": [{"write": "x"}]}, "same length"),
+    ({"repeat": {}, "steps": [{"write": "x"}]}, "name -> list"),
+    ({"repeat": {"id": [1]}, "steps": []}, "non-empty list"),
+])
+def test_expand_repeats_rejects(group, message):
+    with pytest.raises(PlanError, match=message):
+        expand_repeats([group], "p")
+
+
+def test_prepare_plan_expands_repeat():
+    plan = {"name": "p", "steps": [
+        {"repeat": {"id": [1, 2]}, "steps": [step(id="t${id}", write="x ${id}")]},
+    ], "cleanup": [
+        {"repeat": {"id": [1, 2]}, "steps": [step(id="c${id}", write="free ${id}")]},
+    ]}
+    ready = prepare_plan(plan, BENCH)
+    assert [s["id"] for s in ready["steps"]] == ["t1", "t2"]
+    assert [s["write"] for s in ready["steps"]] == ["x 1", "x 2"]
+    assert [s["write"] for s in ready["cleanup"]] == ["free 1", "free 2"]
 
 
 def test_prepare_plan_rejects_unknown_plan_key():
